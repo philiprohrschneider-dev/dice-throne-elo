@@ -116,9 +116,8 @@ function EditGame({ data, game, onDone }: { data: Data; game: Game; onDone: () =
     run(() =>
       store.updateGame(game.id, { player_a_id: Number(a.choice), player_b_id: Number(b.choice), score_a: Number(sa), score_b: Number(sb) }),
     )
-  const remove = () => {
-    if (window.confirm('Dieses Spiel wirklich löschen? Alle späteren Elo-Werte werden neu berechnet.')) run(() => store.deleteGame(game.id))
-  }
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const remove = () => (confirmDelete ? run(() => store.deleteGame(game.id)) : setConfirmDelete(true))
 
   return (
     <div className="game">
@@ -142,7 +141,7 @@ function EditGame({ data, game, onDone }: { data: Data; game: Game; onDone: () =
           Abbrechen
         </button>
         <button className="danger" disabled={busy} onClick={remove}>
-          Löschen
+          {confirmDelete ? 'Wirklich löschen?' : 'Löschen'}
         </button>
       </div>
       {error && <p className="error">{error}</p>}

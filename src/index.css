@@ -17,7 +17,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #15120f;
     --surface: #201c18;
     --surface-2: #2a2520;
@@ -31,6 +31,21 @@
     --gold: #e0b44c;
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #15120f;
+  --surface: #201c18;
+  --surface-2: #2a2520;
+  --text: #f1ebe4;
+  --muted: #a99f94;
+  --border: #3a332c;
+  --accent: #e0545c;
+  --accent-text: #15120f;
+  --up: #5cc68a;
+  --down: #ef7a80;
+  --gold: #e0b44c;
+  color-scheme: dark;
 }
 
 * {

@@ -35,7 +35,13 @@ export default function App() {
   const [prefill, setPrefill] = useState<{ pair: [number, number]; n: number } | null>(null)
 
   const refresh = useCallback(async () => {
-    const s = await store.load()
+    let s = await store.load()
+    // Preview build only: start with the real history so there is something to look at.
+    if (import.meta.env.VITE_DEMO_SEED === '1' && store.mode === 'local' && s.games.length === 0) {
+      const { default: rows } = await import('./lib/demo-games.json')
+      await store.importGames(rows as [string, string, number, number][])
+      s = await store.load()
+    }
     setSnapshot(s)
     setLoadError(null)
     return s
@@ -50,7 +56,11 @@ export default function App() {
 
   const select = (id: TabId) => {
     setTab(id)
-    history.replaceState(null, '', `#${id}`)
+    try {
+      history.replaceState(null, '', `#${id}`)
+    } catch {
+      // some embedded viewers refuse URL changes; the tab still switches
+    }
   }
 
   const data: Data | null = useMemo(() => {
