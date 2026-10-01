@@ -7,8 +7,8 @@ import HistoryTab from './components/HistoryTab'
 import MatchupTab from './components/MatchupTab'
 
 const TABS = [
-  { id: 'entry', label: 'Eintragen' },
   { id: 'table', label: 'Tabelle' },
+  { id: 'entry', label: 'Eintragen' },
   { id: 'history', label: 'Verlauf' },
   { id: 'matchups', label: 'Matchups' },
 ] as const
@@ -25,7 +25,7 @@ export interface Data {
 
 function initialTab(): TabId {
   const hash = window.location.hash.slice(1)
-  return TABS.some((t) => t.id === hash) ? (hash as TabId) : 'entry'
+  return TABS.some((t) => t.id === hash) ? (hash as TabId) : 'table'
 }
 
 export default function App() {
@@ -101,6 +101,13 @@ export default function App() {
             select('entry')
           }}
         />
+      )}
+      {data && tab !== 'entry' && (
+        <button className="fab" aria-label="Neues Ergebnis eintragen" title="Neues Ergebnis eintragen" onClick={() => select('entry')}>
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+            <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+          </svg>
+        </button>
       )}
     </div>
   )

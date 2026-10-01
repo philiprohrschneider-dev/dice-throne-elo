@@ -61,7 +61,7 @@ body {
 .app {
   max-width: 760px;
   margin: 0 auto;
-  padding: 16px 16px 64px;
+  padding: 16px 16px 112px;
 }
 
 header.top {
@@ -467,4 +467,36 @@ details summary {
 
 .slider input {
   flex: 1;
+}
+
+.fab {
+  position: fixed;
+  right: max(20px, calc((100vw - 760px) / 2 + 4px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.28);
+  z-index: 10;
+  transition: transform 0.15s ease;
+}
+
+.fab:hover {
+  transform: scale(1.06);
+}
+
+.fab:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab {
+    transition: none;
+  }
 }
