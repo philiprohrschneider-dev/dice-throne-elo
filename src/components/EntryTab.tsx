@@ -6,6 +6,8 @@ import { percent } from '../lib/format'
 import { emptyPick, NEW, type PickValue } from '../lib/pick'
 import { Delta, RankMove } from './format'
 import PlayerPicker from './PlayerPicker'
+import CharacterPicker from './CharacterPicker'
+import { resolveCharacter } from '../lib/characters'
 
 interface Outcome {
   rows: { name: string; before: number; after: number; rankBefore: number; rankAfter: number }[]
@@ -16,6 +18,8 @@ interface Outcome {
 export default function EntryTab({ data, prefill }: { data: Data; prefill?: [number, number] }) {
   const [a, setA] = useState<PickValue>(prefill ? { choice: String(prefill[0]), newName: '' } : emptyPick)
   const [b, setB] = useState<PickValue>(prefill ? { choice: String(prefill[1]), newName: '' } : emptyPick)
+  const [charA, setCharA] = useState<PickValue>(emptyPick)
+  const [charB, setCharB] = useState<PickValue>(emptyPick)
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,9 +55,11 @@ export default function EntryTab({ data, prefill }: { data: Data; prefill?: [num
     try {
       const idA = await resolve(a)
       const idB = await resolve(b)
+      const heroA = data.charactersEnabled ? await resolveCharacter(charA, data.characters) : null
+      const heroB = data.charactersEnabled ? await resolveCharacter(charB, data.characters) : null
       const withNew = await data.refresh()
       const before = currentRatings(withNew.players, withNew.games)
-      const game = await store.addGame({ player_a_id: idA, player_b_id: idB, score_a: sa, score_b: sb })
+      const game = await store.addGame({ player_a_id: idA, player_b_id: idB, score_a: sa, score_b: sb, character_a_id: heroA, character_b_id: heroB })
       const fresh = await data.refresh()
       const after = currentRatings(fresh.players, fresh.games)
       const name = (id: number) => fresh.players.find((p) => p.id === id)?.name ?? '?'
@@ -67,6 +73,8 @@ export default function EntryTab({ data, prefill }: { data: Data; prefill?: [num
       })
       setA(emptyPick)
       setB(emptyPick)
+      setCharA(emptyPick)
+      setCharB(emptyPick)
       setScoreA('')
       setScoreB('')
     } catch (e) {
@@ -103,6 +111,9 @@ export default function EntryTab({ data, prefill }: { data: Data; prefill?: [num
         <div className="duel">
           <div className="side">
             <PlayerPicker label="Spieler A" players={data.players} ratings={data.ratings} value={a} onChange={setA} exclude={b.choice} />
+            {data.charactersEnabled && (
+              <CharacterPicker id="hero-a" label="Held Spieler A" characters={data.characters} value={charA} onChange={setCharA} />
+            )}
             <input
               className="score-input"
               inputMode="numeric"
@@ -115,6 +126,9 @@ export default function EntryTab({ data, prefill }: { data: Data; prefill?: [num
           <span className="vs">vs</span>
           <div className="side">
             <PlayerPicker label="Spieler B" players={data.players} ratings={data.ratings} value={b} onChange={setB} exclude={a.choice} />
+            {data.charactersEnabled && (
+              <CharacterPicker id="hero-b" label="Held Spieler B" characters={data.characters} value={charB} onChange={setCharB} />
+            )}
             <input
               className="score-input"
               inputMode="numeric"

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { currentRatings, type Game, type Player } from './lib/elo'
+import { currentRatings, type Character, type Game, type Player } from './lib/elo'
 import { store, type Snapshot } from './lib/store'
 import EntryTab from './components/EntryTab'
 import TableTab from './components/TableTab'
 import WhrTab from './components/WhrTab'
 import HistoryTab from './components/HistoryTab'
+import HeroesTab from './components/HeroesTab'
 import MatchupTab from './components/MatchupTab'
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'entry', label: 'Eintragen' },
   { id: 'history', label: 'Verlauf' },
   { id: 'matchups', label: 'Matchups' },
+  { id: 'heroes', label: 'Helden' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
@@ -21,6 +23,9 @@ export interface Data {
   games: Game[]
   ratings: Map<number, number>
   byId: Map<number, Player>
+  characters: Character[]
+  charactersEnabled: boolean
+  charById: Map<number, Character>
   /** Reloads from the store and returns the fresh snapshot. */
   refresh: () => Promise<Snapshot>
 }
@@ -71,6 +76,7 @@ export default function App() {
       ...snapshot,
       ratings: currentRatings(snapshot.players, snapshot.games),
       byId: new Map(snapshot.players.map((p) => [p.id, p])),
+      charById: new Map(snapshot.characters.map((c) => [c.id, c])),
       refresh,
     }
   }, [snapshot, refresh])
@@ -95,6 +101,7 @@ export default function App() {
       {data && tab === 'entry' && <EntryTab key={prefill?.n ?? 0} data={data} prefill={prefill?.pair} />}
       {data && tab === 'table' && <TableTab data={data} />}
       {data && tab === 'whr' && <WhrTab data={data} />}
+      {data && tab === 'heroes' && <HeroesTab data={data} />}
       {data && tab === 'history' && <HistoryTab data={data} />}
       {data && tab === 'matchups' && (
         <MatchupTab

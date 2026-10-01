@@ -34,11 +34,19 @@ export interface Player {
   created_at?: string
 }
 
+export interface Character {
+  id: number
+  name: string
+}
+
 export interface GameInput {
   player_a_id: number
   player_b_id: number
   score_a: number
   score_b: number
+  /** Dice Throne hero each player used; optional (older games have none). */
+  character_a_id?: number | null
+  character_b_id?: number | null
 }
 
 export interface Game extends GameInput {

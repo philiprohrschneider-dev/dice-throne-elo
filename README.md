@@ -51,6 +51,13 @@ No login: anyone with the link can read, add, correct and delete games, which is
 friend group. The tables are read-only for the public key; all writes go through SQL functions that
 take a lock, so two people saving at the same moment never compute from stale ratings.
 
+## Heroes
+
+Each player can optionally record their Dice Throne hero per game (pick or create it when entering
+or correcting a game). The "Helden" tab shows games, W/L/D, win rate and summed Elo change per hero,
+for everyone or one player. Existing databases need `supabase/migrations/002-characters.sql` run
+once in the Supabase SQL editor; until then the app hides the hero fields.
+
 ## WHR tab and calibrating w2
 
 The WHR tab shows a Whole-History Rating next to Elo (Elo stays the official rating). It is

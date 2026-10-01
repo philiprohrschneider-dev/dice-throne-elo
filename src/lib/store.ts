@@ -1,18 +1,22 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { replay, type Game, type GameInput, type Player } from './elo'
+import { replay, type Character, type Game, type GameInput, type Player } from './elo'
 
 export interface Snapshot {
   players: Player[]
   games: Game[]
+  characters: Character[]
+  /** False while the database has not been migrated for characters yet. */
+  charactersEnabled: boolean
 }
 
-/** Historical format from games.json: [playerA, playerB, scoreA, scoreB]. */
-export type ImportRow = [string, string, number, number]
+/** games.json format: [playerA, playerB, scoreA, scoreB, characterA?, characterB?]. */
+export type ImportRow = [string, string, number, number] | [string, string, number, number, string | null, string | null]
 
 export interface Store {
   mode: 'supabase' | 'local'
   load(): Promise<Snapshot>
   addPlayer(name: string): Promise<Player>
+  addCharacter(name: string): Promise<Character>
   addGame(g: GameInput): Promise<Game>
   updateGame(id: number, g: GameInput): Promise<void>
   deleteGame(id: number): Promise<void>
@@ -32,27 +36,41 @@ function check<T>(res: { data: T; error: { message: string } | null }): T {
 }
 
 function supabaseStore(db: SupabaseClient): Store {
+  // Character columns exist only after supabase/migrations/002-characters.sql has run.
+  let charactersEnabled = false
+  const chars = (g: GameInput) =>
+    charactersEnabled ? { p_char_a: g.character_a_id ?? null, p_char_b: g.character_b_id ?? null } : {}
   return {
     mode: 'supabase',
     async load() {
-      const [players, games] = await Promise.all([
+      const [players, games, characters] = await Promise.all([
         db.from('players').select('id,name,created_at').order('id'),
         db.from('games').select('*').order('id'),
+        db.from('characters').select('id,name').order('name'),
       ])
-      return { players: check(players) as Player[], games: check(games) as Game[] }
+      charactersEnabled = !characters.error
+      return {
+        players: check(players) as Player[],
+        games: check(games) as Game[],
+        characters: (characters.data ?? []) as Character[],
+        charactersEnabled,
+      }
+    },
+    async addCharacter(name) {
+      return check(await db.rpc('add_character', { p_name: name })) as Character
     },
     async addPlayer(name) {
       return check(await db.rpc('add_player', { p_name: name })) as Player
     },
     async addGame(g) {
       return check(
-        await db.rpc('add_game', { p_a: g.player_a_id, p_b: g.player_b_id, p_score_a: g.score_a, p_score_b: g.score_b }),
+        await db.rpc('add_game', { p_a: g.player_a_id, p_b: g.player_b_id, p_score_a: g.score_a, p_score_b: g.score_b, ...chars(g) }),
       ) as Game
     },
     async updateGame(id, g) {
       check(
         await db.rpc('update_game', {
-          p_id: id, p_a: g.player_a_id, p_b: g.player_b_id, p_score_a: g.score_a, p_score_b: g.score_b,
+          p_id: id, p_a: g.player_a_id, p_b: g.player_b_id, p_score_a: g.score_a, p_score_b: g.score_b, ...chars(g),
         }),
       )
     },
@@ -72,6 +90,7 @@ function supabaseStore(db: SupabaseClient): Store {
         .channel('elo-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, debounced)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, debounced)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, debounced)
         .subscribe()
       return () => {
         clearTimeout(timer)
@@ -87,15 +106,18 @@ function localStore(): Store {
   const read = (): Snapshot => {
     try {
       const raw = localStorage.getItem(KEY)
-      if (raw) return JSON.parse(raw) as Snapshot
+      if (raw) {
+        const s = JSON.parse(raw) as Partial<Snapshot>
+        return { players: s.players ?? [], games: s.games ?? [], characters: s.characters ?? [], charactersEnabled: true }
+      }
     } catch {
       // ignore unreadable storage and start empty
     }
-    return { players: [], games: [] }
+    return { players: [], games: [], characters: [], charactersEnabled: true }
   }
   const write = (s: Snapshot) => {
     const { games } = replay(s.players, s.games)
-    const next = { players: s.players, games }
+    const next = { ...s, games }
     try {
       localStorage.setItem(KEY, JSON.stringify(next))
     } catch {
@@ -119,6 +141,15 @@ function localStore(): Store {
     state = write({ ...state, players: [...state.players, p] })
     return p
   }
+  const characterFor = (name: string): Character => {
+    const clean = name.trim()
+    if (!clean) throw new Error('Name fehlt')
+    const existing = state.characters.find((c) => c.name.toLowerCase() === clean.toLowerCase())
+    if (existing) return existing
+    const c = { id: nextId(state.characters), name: clean }
+    state = write({ ...state, characters: [...state.characters, c] })
+    return c
+  }
   const addGameSync = (g: GameInput): Game => {
     validate(g)
     const id = nextId(state.games)
@@ -133,6 +164,9 @@ function localStore(): Store {
     },
     async addPlayer(name) {
       return addPlayerSync(name)
+    },
+    async addCharacter(name) {
+      return characterFor(name)
     },
     async addGame(g) {
       return addGameSync(g)
@@ -160,13 +194,16 @@ function localStore(): Store {
         return p.id
       }
       const now = new Date().toISOString()
-      rows.forEach(([a, b, sa, sb], i) => {
+      state = { ...state, players }
+      const charId = (name: string | null | undefined) => (name?.trim() ? characterFor(name).id : null)
+      rows.forEach(([a, b, sa, sb, ca, cb], i) => {
         games.push({
           id: i + 1, player_a_id: idFor(a), player_b_id: idFor(b), score_a: sa, score_b: sb, played_at: now,
           elo_a_before: 0, elo_b_before: 0, elo_a_after: 0, elo_b_after: 0,
+          character_a_id: charId(ca), character_b_id: charId(cb),
         })
       })
-      state = write({ players, games })
+      state = write({ ...state, players, games })
       return rows.length
     },
     subscribe(onChange) {
@@ -190,9 +227,10 @@ export function parseImport(text: string): ImportRow[] {
   if (!Array.isArray(rows)) throw new Error('Erwartet wird eine Liste [SpielerA, SpielerB, PunkteA, PunkteB]')
   return rows.map((r, i) => {
     if (!Array.isArray(r) || r.length < 4) throw new Error(`Eintrag ${i + 1} hat nicht das Format [A, B, PunkteA, PunkteB]`)
-    const [a, b, sa, sb] = r
+    const [a, b, sa, sb, ca, cb] = r
     if (typeof a !== 'string' || typeof b !== 'string' || !Number.isFinite(Number(sa)) || !Number.isFinite(Number(sb)))
       throw new Error(`Eintrag ${i + 1} ist ungültig: ${JSON.stringify(r)}`)
-    return [a, b, Number(sa), Number(sb)] as ImportRow
+    const hero = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : null)
+    return r.length > 4 ? [a, b, Number(sa), Number(sb), hero(ca), hero(cb)] : ([a, b, Number(sa), Number(sb)] as ImportRow)
   })
 }

@@ -6,6 +6,8 @@ import { formatDate } from '../lib/format'
 import type { PickValue } from '../lib/pick'
 import { Delta } from './format'
 import PlayerPicker from './PlayerPicker'
+import CharacterPicker from './CharacterPicker'
+import { pickOf, resolveCharacter } from '../lib/characters'
 
 const PAGE = 30
 
@@ -60,6 +62,7 @@ export default function HistoryTab({ data }: { data: Data }) {
 
 function GameRow({ data, game: g, no, onEdit }: { data: Data; game: Game; no: number; onEdit: () => void }) {
   const name = (id: number) => data.byId.get(id)?.name ?? '?'
+  const hero = (id: number | null | undefined) => (id ? data.charById.get(id)?.name : undefined)
   const dA = g.elo_a_after - g.elo_a_before
   return (
     <div className="game">
@@ -75,14 +78,20 @@ function GameRow({ data, game: g, no, onEdit }: { data: Data; game: Game; no: nu
         <div>
           <span className={g.score_a > g.score_b ? 'winner' : undefined}>{name(g.player_a_id)}</span>{' '}
           <Delta value={dA} />
-          <div className="muted small num">{g.elo_a_after}</div>
+          <div className="muted small num">
+            {g.elo_a_after}
+            {hero(g.character_a_id) && ` · ${hero(g.character_a_id)}`}
+          </div>
         </div>
         <div className="score num">
           {g.score_a} : {g.score_b}
         </div>
         <div className="b">
           <Delta value={-dA} /> <span className={g.score_b > g.score_a ? 'winner' : undefined}>{name(g.player_b_id)}</span>
-          <div className="muted small num">{g.elo_b_after}</div>
+          <div className="muted small num">
+            {hero(g.character_b_id) && `${hero(g.character_b_id)} · `}
+            {g.elo_b_after}
+          </div>
         </div>
       </div>
     </div>
@@ -92,6 +101,8 @@ function GameRow({ data, game: g, no, onEdit }: { data: Data; game: Game; no: nu
 function EditGame({ data, game, onDone }: { data: Data; game: Game; onDone: () => void }) {
   const [a, setA] = useState<PickValue>({ choice: String(game.player_a_id), newName: '' })
   const [b, setB] = useState<PickValue>({ choice: String(game.player_b_id), newName: '' })
+  const [charA, setCharA] = useState<PickValue>(pickOf(game.character_a_id))
+  const [charB, setCharB] = useState<PickValue>(pickOf(game.character_b_id))
   const [sa, setSa] = useState(String(game.score_a))
   const [sb, setSb] = useState(String(game.score_b))
   const [busy, setBusy] = useState(false)
@@ -113,9 +124,14 @@ function EditGame({ data, game, onDone }: { data: Data; game: Game; onDone: () =
   }
 
   const save = () =>
-    run(() =>
-      store.updateGame(game.id, { player_a_id: Number(a.choice), player_b_id: Number(b.choice), score_a: Number(sa), score_b: Number(sb) }),
-    )
+    run(async () => {
+      const heroA = data.charactersEnabled ? await resolveCharacter(charA, data.characters) : null
+      const heroB = data.charactersEnabled ? await resolveCharacter(charB, data.characters) : null
+      await store.updateGame(game.id, {
+        player_a_id: Number(a.choice), player_b_id: Number(b.choice), score_a: Number(sa), score_b: Number(sb),
+        character_a_id: heroA, character_b_id: heroB,
+      })
+    })
   const [confirmDelete, setConfirmDelete] = useState(false)
   const remove = () => (confirmDelete ? run(() => store.deleteGame(game.id)) : setConfirmDelete(true))
 
@@ -124,11 +140,17 @@ function EditGame({ data, game, onDone }: { data: Data; game: Game; onDone: () =
       <div className="duel">
         <div className="side">
           <PlayerPicker label="Spieler A" players={data.players} ratings={data.ratings} value={a} onChange={setA} exclude={b.choice} allowNew={false} />
+          {data.charactersEnabled && (
+            <CharacterPicker id="edit-hero-a" label="Held Spieler A" characters={data.characters} value={charA} onChange={setCharA} />
+          )}
           <input className="score-input" inputMode="numeric" aria-label="Punkte A" value={sa} onChange={(e) => setSa(e.target.value.replace(/\D/g, ''))} />
         </div>
         <span className="vs">vs</span>
         <div className="side">
           <PlayerPicker label="Spieler B" players={data.players} ratings={data.ratings} value={b} onChange={setB} exclude={a.choice} allowNew={false} />
+          {data.charactersEnabled && (
+            <CharacterPicker id="edit-hero-b" label="Held Spieler B" characters={data.characters} value={charB} onChange={setCharB} />
+          )}
           <input className="score-input" inputMode="numeric" aria-label="Punkte B" value={sb} onChange={(e) => setSb(e.target.value.replace(/\D/g, ''))} />
         </div>
       </div>
@@ -171,7 +193,14 @@ function DataCard({ data }: { data: Data }) {
 
   const exportJson = () => {
     const name = (id: number) => data.byId.get(id)?.name ?? '?'
-    const rows = [...data.games].sort((x, y) => x.id - y.id).map((g) => [name(g.player_a_id), name(g.player_b_id), g.score_a, g.score_b])
+    const hero = (id: number | null | undefined) => (id ? (data.charById.get(id)?.name ?? null) : null)
+    const withHeroes = data.games.some((g) => g.character_a_id || g.character_b_id)
+    const rows = [...data.games]
+      .sort((x, y) => x.id - y.id)
+      .map((g) => {
+        const base = [name(g.player_a_id), name(g.player_b_id), g.score_a, g.score_b]
+        return withHeroes ? [...base, hero(g.character_a_id), hero(g.character_b_id)] : base
+      })
     const blob = new Blob([JSON.stringify(rows, null, 1)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -185,7 +214,7 @@ function DataCard({ data }: { data: Data }) {
       <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary>Daten importieren / sichern</summary>
         <p className="small muted">
-          Import erwartet eine games.json im Format [SpielerA, SpielerB, PunkteA, PunkteB], chronologisch. Geht nur, solange noch
+          Import erwartet eine games.json im Format [SpielerA, SpielerB, PunkteA, PunkteB, HeldA, HeldB], chronologisch (Helden optional). Geht nur, solange noch
           keine Spiele eingetragen sind.
         </p>
         <div className="row">
