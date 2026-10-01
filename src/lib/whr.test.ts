@@ -31,3 +31,20 @@ describe('whr', () => {
     expect(after).toBeLessThan(before)
   })
 })
+
+describe('whr calibration', () => {
+  it('reports every candidate on the same scoreable test games', async () => {
+    const { calibrate } = await import('./whrCalibration')
+    const names = ['A', 'B', 'C', 'D']
+    const rows = Array.from({ length: 40 }, (_, i) => [names[i % 4], names[(i + 1 + (i % 3)) % 4], (i * 7) % 11, (i * 5) % 9] as [string, string, number, number])
+      .filter(([a, b]) => a !== b)
+    const report = calibrate(rows, [50, 200])
+    expect(report.trainGames + report.testGames).toBe(rows.length)
+    expect(report.split[0].evaluated).toBe(report.split[1].evaluated)
+    expect(report.split[0].evaluated).toBe(report.testGames - report.skippedNewPlayer - report.skippedDraw)
+    for (const r of [...report.split, ...report.rolling]) {
+      expect(r.logLoss).toBeGreaterThan(0)
+      expect(r.accuracy).toBeGreaterThanOrEqual(0)
+    }
+  })
+})

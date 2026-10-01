@@ -51,6 +51,24 @@ No login: anyone with the link can read, add, correct and delete games, which is
 friend group. The tables are read-only for the public key; all writes go through SQL functions that
 take a lock, so two people saving at the same moment never compute from stale ratings.
 
+## WHR tab and calibrating w2
+
+The WHR tab shows a Whole-History Rating next to Elo (Elo stays the official rating). It is
+recomputed from all games on every change. Time unit = game index (one game in the group = one
+step), because the historical games have no dates. `DEFAULT_W2` in `src/lib/whr.ts` is the drift
+variance per step in Elo² (same unit as the Python package whole-history-rating).
+
+To recalibrate once more games exist: export games.json on the site (Verlauf → "Daten importieren /
+sichern"), then
+
+```
+npm run calibrate:whr -- games.json                 # default candidates, last 15 % as test
+npm run calibrate:whr -- games.json --test 18 --w2 100,200,300
+```
+
+It prints log-loss, hit rate and the number of scoreable test games for a fixed chronological split
+and for a rolling one-step-ahead check, plus a paired bootstrap against the best value.
+
 ## Checks
 
 ```

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Data } from '../App'
-import { computeWhr, W_ELO } from '../lib/whr'
+import { computeWhr, DEFAULT_W2 } from '../lib/whr'
 
 export default function WhrTab({ data }: { data: Data }) {
   const [info, setInfo] = useState(false)
@@ -24,7 +24,7 @@ export default function WhrTab({ data }: { data: Data }) {
           </p>
           <p>
             Gezählt wird nur Sieg, Niederlage oder Unentschieden, nicht die Punktedifferenz. Die Spielstärke darf sich mit der Zeit ändern
-            (etwa {W_ELO} Punkte pro Partie in der Runde). Das ± zeigt, wie sicher die Wertung ist: Wer wenig gespielt hat, hat ein großes ±.
+            (Drift-Varianz w² = {DEFAULT_W2} pro Partie in der Runde). Das ± zeigt, wie sicher die Wertung ist: Wer wenig gespielt hat, hat ein großes ±.
           </p>
           <p className="muted">Die Elo-Tabelle bleibt die offizielle Wertung. WHR ist eine zweite Sicht.</p>
         </div>

@@ -3,13 +3,14 @@
 // results also correct earlier estimates. It ignores score margins (win/loss/draw only).
 //
 // Time axis: the historical games have no real dates, so one game in the group = one
-// time step. A player's rating may drift by about W_ELO per sqrt(time step).
+// time step (game index). w2 is the variance of the skill drift per time step, in Elo²,
+// the same unit as the Python package whole-history-rating. Calibrate it with
+// `npm run calibrate:whr -- games.json` (scripts/calibrate-whr.ts).
 import type { Game, Player } from './elo'
 
 const LN10_400 = Math.log(10) / 400
-/** Allowed drift per game in the group, in Elo points (Wiener process). */
-export const W_ELO = 10
-const W2 = (W_ELO * LN10_400) ** 2
+/** Skill-drift variance per game in the group, in Elo². Calibrated 2026-10-01 on 115 games (best rolling log-loss). */
+export const DEFAULT_W2 = 250
 /** Displayed scale: same centre as our Elo table. */
 const CENTER = 1000
 
@@ -60,7 +61,7 @@ function buildStates(players: Player[], games: Game[]): PlayerState[] {
 }
 
 /** Gradient and tridiagonal Hessian of the log-posterior for one player. */
-function derivatives(p: PlayerState) {
+function derivatives(p: PlayerState, w2: number) {
   const n = p.days.length
   const grad = new Array<number>(n).fill(0)
   const diag = new Array<number>(n).fill(0)
@@ -79,7 +80,7 @@ function derivatives(p: PlayerState) {
   diag[0] -= 2 * p0 * (1 - p0)
   // Wiener process between consecutive days.
   for (let k = 0; k < n - 1; k++) {
-    const s2 = Math.max(1, p.days[k + 1].time - p.days[k].time) * W2
+    const s2 = Math.max(1, p.days[k + 1].time - p.days[k].time) * w2 * LN10_400 ** 2
     const diff = p.days[k + 1].r - p.days[k].r
     grad[k] += diff / s2
     grad[k + 1] -= diff / s2
@@ -108,9 +109,9 @@ function solveTridiagonal(diag: number[], off: number[], rhs: number[]): number[
   return x
 }
 
-function newtonStep(p: PlayerState): number {
+function newtonStep(p: PlayerState, w2: number): number {
   if (!p.days.length) return 0
-  const { grad, diag, off } = derivatives(p)
+  const { grad, diag, off } = derivatives(p, w2)
   const step = solveTridiagonal(diag, off, grad)
   let maxChange = 0
   p.days.forEach((d, k) => {
@@ -120,20 +121,35 @@ function newtonStep(p: PlayerState): number {
   return maxChange
 }
 
-export function computeWhr(players: Player[], games: Game[], maxIterations = 200): WhrRow[] {
+function fit(players: Player[], games: Game[], w2: number, maxIterations = 200): PlayerState[] {
   const states = buildStates(players, games)
   for (let it = 0; it < maxIterations; it++) {
     let change = 0
-    for (const p of states) change = Math.max(change, newtonStep(p))
+    for (const p of states) change = Math.max(change, newtonStep(p, w2))
     if (change < 1e-6) break
   }
+  return states
+}
+
+/** Each player's rating at their last game, in Elo points (centre 1000); players without games are left out. */
+export function currentWhrRatings(players: Player[], games: Game[], w2 = DEFAULT_W2): Map<number, number> {
+  const out = new Map<number, number>()
+  for (const s of fit(players, games, w2)) {
+    const last = s.days[s.days.length - 1]
+    if (last) out.set(s.id, last.r / LN10_400 + CENTER)
+  }
+  return out
+}
+
+export function computeWhr(players: Player[], games: Game[], w2 = DEFAULT_W2): WhrRow[] {
+  const states = fit(players, games, w2)
   const byId = new Map(players.map((p) => [p.id, p]))
   const rows = states.map((s): WhrRow => {
     const last = s.days[s.days.length - 1]
     let uncertainty = 350 // shown for players without games
     if (last) {
       // Variance of the last day = -(H^-1)[n-1][n-1].
-      const { diag, off } = derivatives(s)
+      const { diag, off } = derivatives(s, w2)
       const e = new Array<number>(s.days.length).fill(0)
       e[e.length - 1] = 1
       const col = solveTridiagonal(diag, off, e)
