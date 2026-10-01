@@ -26,3 +26,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          # Always push a fresh commit so GitHub Pages rebuilds on every deploy.
+          force_orphan: true
