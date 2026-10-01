@@ -1,6 +1,6 @@
 // Cross-validation for the WHR drift parameter w2. Used by scripts/calibrate-whr.ts.
 import type { Game, Player } from './elo.ts'
-import { currentWhrRatings } from './whr.ts'
+import { currentWhrRatings, DEFAULT_W2 } from './whr.ts'
 
 /** [playerA, playerB, scoreA, scoreB], chronological (the games.json format). */
 export type Row = [string, string, number, number]
@@ -27,7 +27,7 @@ export interface CalibrationReport {
   skippedDraw: number
   /** Static split: train once on the first games, predict all test games. */
   split: CandidateResult[]
-  /** Rolling check: each test game predicted from all games before it. */
+  /** Rolling check: test games predicted in blocks, each block from all games before it. */
   rolling: CandidateResult[]
 }
 
@@ -72,7 +72,17 @@ function summarize(w2: number, scored: { loss: number; hit: number }[]): Candida
   }
 }
 
-export function calibrate(rows: Row[], candidates = DEFAULT_CANDIDATES, testFraction = 0.15, testCount?: number): CalibrationReport {
+/**
+ * rollingBlocks: how many refits the rolling check does (each test block is predicted from
+ * every game before it). More blocks = closer to game-by-game, but slower.
+ */
+export function calibrate(
+  rows: Row[],
+  candidates = DEFAULT_CANDIDATES,
+  testFraction = 0.15,
+  testCount?: number,
+  rollingBlocks = 5,
+): CalibrationReport {
   const { players, games } = toModel(rows)
   const nTest = testCount ?? Math.round(rows.length * testFraction)
   const nTrain = rows.length - nTest
@@ -95,15 +105,19 @@ export function calibrate(rows: Row[], candidates = DEFAULT_CANDIDATES, testFrac
     return summarize(w2, scored)
   })
 
-  // Rolling origin: for test game i, fit on every game before it. A player who first
-  // appears in the test period becomes scoreable once they have one earlier game.
+  // Rolling origin: each block of test games is predicted from every game before the block.
+  // A player who first appears in the test period becomes scoreable in later blocks.
+  const blocks = Math.max(1, Math.min(rollingBlocks, test.length))
+  const blockSize = Math.ceil(test.length / blocks)
   const rolling = candidates.map((w2) => {
     const scored: { loss: number; hit: number }[] = []
-    test.forEach((g, i) => {
-      const ratings = currentWhrRatings(players, games.slice(0, nTrain + i), w2)
-      const r = score(ratings, g)
-      if (typeof r === 'object') scored.push(r)
-    })
+    for (let start = 0; start < test.length; start += blockSize) {
+      const ratings = currentWhrRatings(players, games.slice(0, nTrain + start), w2)
+      for (const g of test.slice(start, start + blockSize)) {
+        const r = score(ratings, g)
+        if (typeof r === 'object') scored.push(r)
+      }
+    }
     return summarize(w2, scored)
   })
 
@@ -130,4 +144,43 @@ export function bootstrapWinShare(a: number[], b: number[], resamples = 5000, se
     else if (diff === 0) wins += 0.5
   }
   return wins / resamples
+}
+
+/** The app recalibrates after every CALIBRATION_STEP games, from MIN_CALIBRATION_GAMES on. */
+export const CALIBRATION_STEP = 10
+export const MIN_CALIBRATION_GAMES = 50
+
+/** Log-loss differences below this are treated as noise (see autoCalibrate). */
+export const NOISE_TOLERANCE = 0.005
+
+export interface AutoCalibration {
+  w2: number
+  /** Number of games the calibration used (a multiple of CALIBRATION_STEP), 0 = default value. */
+  basedOn: number
+  report: CalibrationReport | null
+}
+
+/**
+ * Deterministic: depends only on the first floor(n/10)*10 games, so every viewer gets the
+ * same w2 and it only changes every 10 games (or when one of those games is corrected).
+ * Picks the lowest log-loss of the rolling check, but among all candidates within
+ * NOISE_TOLERANCE of that minimum it takes the one closest to DEFAULT_W2, so a flat curve
+ * does not make w2 jump between extremes.
+ */
+export function autoCalibrate(rows: Row[]): AutoCalibration {
+  const basedOn = Math.floor(rows.length / CALIBRATION_STEP) * CALIBRATION_STEP
+  if (basedOn <= MIN_CALIBRATION_GAMES) return { w2: DEFAULT_W2, basedOn: 0, report: null }
+  // Every game after a burn-in of MIN_CALIBRATION_GAMES is a test game, predicted in blocks of
+  // CALIBRATION_STEP from all games before the block. Many more test games than a 15 % split,
+  // so the chosen w2 does not jump around with every new block of games.
+  const testCount = basedOn - MIN_CALIBRATION_GAMES
+  const report = calibrate(rows.slice(0, basedOn), DEFAULT_CANDIDATES, 0, testCount, Math.ceil(testCount / CALIBRATION_STEP))
+  const scored = report.rolling.filter((r) => r.evaluated > 0)
+  if (!scored.length) return { w2: DEFAULT_W2, basedOn: 0, report }
+  const min = Math.min(...scored.map((r) => r.logLoss))
+  const distance = (w2: number) => Math.abs(Math.log(w2 / DEFAULT_W2))
+  const best = scored
+    .filter((r) => r.logLoss <= min + NOISE_TOLERANCE)
+    .reduce((m, r) => (distance(r.w2) < distance(m.w2) ? r : m))
+  return { w2: best.w2, basedOn, report }
 }

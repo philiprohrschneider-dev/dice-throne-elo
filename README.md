@@ -58,7 +58,10 @@ recomputed from all games on every change. Time unit = game index (one game in t
 step), because the historical games have no dates. `DEFAULT_W2` in `src/lib/whr.ts` is the drift
 variance per step in Elo² (same unit as the Python package whole-history-rating).
 
-To recalibrate once more games exist: export games.json on the site (Verlauf → "Daten importieren /
+w2 calibrates itself: every 10 games (from 60 on) the app tests the candidates on all games after
+the first 50, predicting each block of 10 from every game before it, and takes the lowest log-loss
+(staying near 250 when candidates are within 0.005). It depends only on the games, so everyone sees
+the same value. To look at the details or try other splits: export games.json on the site (Verlauf → "Daten importieren /
 sichern"), then
 
 ```
