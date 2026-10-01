@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { replay, type Character, type Game, type GameInput, type Player } from './elo'
+import { KNOWN_HEROES } from './heroes'
 
 export interface Snapshot {
   players: Player[]
@@ -100,6 +101,8 @@ function supabaseStore(db: SupabaseClient): Store {
   }
 }
 
+const seedHeroes = (): Character[] => KNOWN_HEROES.map((name, i) => ({ id: i + 1, name }))
+
 /** Browser-only fallback so the app works before Supabase is connected. Data stays on this device. */
 function localStore(): Store {
   const KEY = 'elo-tracker-local-v1'
@@ -108,12 +111,12 @@ function localStore(): Store {
       const raw = localStorage.getItem(KEY)
       if (raw) {
         const s = JSON.parse(raw) as Partial<Snapshot>
-        return { players: s.players ?? [], games: s.games ?? [], characters: s.characters ?? [], charactersEnabled: true }
+        return { players: s.players ?? [], games: s.games ?? [], characters: s.characters?.length ? s.characters : seedHeroes(), charactersEnabled: true }
       }
     } catch {
       // ignore unreadable storage and start empty
     }
-    return { players: [], games: [], characters: [], charactersEnabled: true }
+    return { players: [], games: [], characters: seedHeroes(), charactersEnabled: true }
   }
   const write = (s: Snapshot) => {
     const { games } = replay(s.players, s.games)

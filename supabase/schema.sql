@@ -253,3 +253,45 @@ begin
   alter publication supabase_realtime add table characters;
 exception when duplicate_object then null;
 end $$;
+
+-- Heroes the group owns (also in src/lib/heroes.ts). Existing names are left alone.
+insert into characters (name) values
+  ('Barbar'),
+  ('Mondelfe'),
+  ('Paladin'),
+  ('Kampfmönch'),
+  ('Pyromantin'),
+  ('Schattendieb'),
+  ('Waldwächter'),
+  ('Kunoichi'),
+  ('Revolverheldin'),
+  ('Samurai'),
+  ('Stratege'),
+  ('Tiergefährtin'),
+  ('Tüftler'),
+  ('Verfluchte Piratin'),
+  ('Vampirfürstin'),
+  ('Himmelsbotin'),
+  ('Santa'),
+  ('Krampus'),
+  ('Black Panther'),
+  ('Black Widow'),
+  ('Captain Marvel'),
+  ('Doctor Strange'),
+  ('Scarlet Witch'),
+  ('Loki'),
+  ('Spiderman'),
+  ('Thor'),
+  ('Kopfloser Reiter'),
+  ('Bleiche Dame'),
+  ('Totenbeschwörer'),
+  ('Rabenfürstin'),
+  ('Storm'),
+  ('Cyclops'),
+  ('Iceman'),
+  ('Psylocke'),
+  ('Rogue'),
+  ('Gambit'),
+  ('Jean Grey'),
+  ('Wolverine')
+on conflict (lower(trim(name))) do nothing;
