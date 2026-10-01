@@ -3,11 +3,13 @@ import { currentRatings, type Game, type Player } from './lib/elo'
 import { store, type Snapshot } from './lib/store'
 import EntryTab from './components/EntryTab'
 import TableTab from './components/TableTab'
+import WhrTab from './components/WhrTab'
 import HistoryTab from './components/HistoryTab'
 import MatchupTab from './components/MatchupTab'
 
 const TABS = [
   { id: 'table', label: 'Tabelle' },
+  { id: 'whr', label: 'WHR' },
   { id: 'entry', label: 'Eintragen' },
   { id: 'history', label: 'Verlauf' },
   { id: 'matchups', label: 'Matchups' },
@@ -92,6 +94,7 @@ export default function App() {
       {!data && !loadError && <p className="muted">Lade…</p>}
       {data && tab === 'entry' && <EntryTab key={prefill?.n ?? 0} data={data} prefill={prefill?.pair} />}
       {data && tab === 'table' && <TableTab data={data} />}
+      {data && tab === 'whr' && <WhrTab data={data} />}
       {data && tab === 'history' && <HistoryTab data={data} />}
       {data && tab === 'matchups' && (
         <MatchupTab
