@@ -12,6 +12,8 @@ interface HeroRow {
   eloSum: number
 }
 
+const winRate = (r: HeroRow) => (r.wins + r.draws / 2) / r.games
+
 export default function HeroesTab({ data }: { data: Data }) {
   const [filter, setFilter] = useState('')
   const playerId = filter ? Number(filter) : null
@@ -40,7 +42,8 @@ export default function HeroesTab({ data }: { data: Data }) {
         else row.draws++
       }
     }
-    const rows = [...byHero.values()].sort((a, b) => b.games - a.games || b.wins / b.games - a.wins / a.games || a.name.localeCompare(b.name, 'de'))
+    // Best win rate first; with equal rates the hero with more games ranks higher.
+    const rows = [...byHero.values()].sort((a, b) => winRate(b) - winRate(a) || b.games - a.games || a.name.localeCompare(b.name, 'de'))
     return { rows, withHero }
   }, [data.games, data.charById, playerId])
 
@@ -56,7 +59,6 @@ export default function HeroesTab({ data }: { data: Data }) {
     )
   }
 
-  const winRate = (r: HeroRow) => (r.wins + r.draws / 2) / r.games
   return (
     <section className="card">
       <div className="row" style={{ marginBottom: 8 }}>
